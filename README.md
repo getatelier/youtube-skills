@@ -83,21 +83,45 @@ skills/claude-youtube/
 
 - [Claude Code](https://claude.com/claude-code) CLI installed and configured
 
-### Quick Install
+### Option 1: Global Install (recommended)
 
-Clone this repo into your Claude Code skills directory:
+Available in every Claude Code session:
 
 ```bash
+# 1. Clone this repo
 git clone https://github.com/AgriciDaniel/claude-youtube.git
+
+# 2. Copy the skill into Claude Code's global skills folder
 cp -r claude-youtube/skills/claude-youtube ~/.claude/skills/claude-youtube
 ```
 
-Or symlink for development:
+Or use a symlink for development (keeps the skill updated as you edit):
 
 ```bash
 git clone https://github.com/AgriciDaniel/claude-youtube.git ~/claude-youtube
 ln -s ~/claude-youtube/skills/claude-youtube ~/.claude/skills/claude-youtube
 ```
+
+### Option 2: Project Install
+
+Available only within a specific project:
+
+```bash
+# Inside your project root
+cp -r /path/to/claude-youtube/skills/claude-youtube .claude/skills/claude-youtube
+```
+
+> **Tip:** Run `claude config get skillsDir` to see where Claude Code looks for skills on your system.
+
+### Verify Installation
+
+Start Claude Code in any folder and run:
+
+```
+> /youtube audit
+```
+
+If the skill loads, you're ready to go.
 
 ### Optional: YouTube API (for live channel data)
 
