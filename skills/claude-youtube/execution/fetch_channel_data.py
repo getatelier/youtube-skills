@@ -14,12 +14,15 @@ Usage:
     python execution/fetch_channel_data.py UCxxx --videos 20
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils.quota_tracker import check_quota, consume_quota
@@ -28,7 +31,7 @@ from utils.youtube_auth import get_data_api_service
 TMP_DIR = Path.home() / ".claude" / ".tmp"
 
 
-def parse_channel_input(raw):
+def parse_channel_input(raw: str) -> dict[str, str]:
     """Extract channel ID or handle from various input formats."""
     raw = raw.strip()
 
@@ -63,38 +66,50 @@ def parse_channel_input(raw):
     return {"type": "unknown", "value": raw}
 
 
-def resolve_channel_id(service, parsed):
+def resolve_channel_id(service: Any, parsed: dict[str, str]) -> str | None:
     """Resolve various inputs to a channel ID."""
     if parsed["type"] == "id":
         return parsed["value"]
 
     if parsed["type"] == "handle":
-        response = service.channels().list(
-            part="id", forHandle=parsed["value"].lstrip("@")
-        ).execute()
+        response = (
+            service.channels().list(part="id", forHandle=parsed["value"].lstrip("@")).execute()
+        )
         consume_quota("channels.list")
         items = response.get("items", [])
         if items:
-            return items[0]["id"]
+            channel_id = items[0].get("id")
+            if isinstance(channel_id, str):
+                return channel_id
 
     if parsed["type"] in ("custom_url", "username"):
-        response = service.search().list(
-            part="id", q=parsed["value"], type="channel", maxResults=1
-        ).execute()
+        response = (
+            service.search()
+            .list(part="id", q=parsed["value"], type="channel", maxResults=1)
+            .execute()
+        )
         consume_quota("search.list")
         items = response.get("items", [])
         if items:
-            return items[0]["id"]["channelId"]
+            item_id = items[0].get("id", {})
+            if isinstance(item_id, dict):
+                channel_id = item_id.get("channelId")
+                if isinstance(channel_id, str):
+                    return channel_id
 
     return None
 
 
-def fetch_channel_info(service, channel_id):
+def fetch_channel_info(service: Any, channel_id: str) -> dict[str, Any] | None:
     """Fetch channel snippet, statistics, and branding."""
-    response = service.channels().list(
-        part="snippet,statistics,contentDetails,brandingSettings",
-        id=channel_id,
-    ).execute()
+    response = (
+        service.channels()
+        .list(
+            part="snippet,statistics,contentDetails,brandingSettings",
+            id=channel_id,
+        )
+        .execute()
+    )
     consume_quota("channels.list")
 
     items = response.get("items", [])
@@ -122,7 +137,9 @@ def fetch_channel_info(service, channel_id):
     }
 
 
-def fetch_recent_videos(service, uploads_playlist_id, max_results=10):
+def fetch_recent_videos(
+    service: Any, uploads_playlist_id: str, max_results: int = 10
+) -> list[dict[str, Any]]:
     """Fetch recent videos via uploads playlist (cheaper than search.list)."""
     # Step 1: Get video IDs from playlist
     video_ids = []
@@ -131,12 +148,16 @@ def fetch_recent_videos(service, uploads_playlist_id, max_results=10):
 
     while remaining > 0:
         page_size = min(remaining, 50)
-        response = service.playlistItems().list(
-            part="contentDetails",
-            playlistId=uploads_playlist_id,
-            maxResults=page_size,
-            pageToken=next_page,
-        ).execute()
+        response = (
+            service.playlistItems()
+            .list(
+                part="contentDetails",
+                playlistId=uploads_playlist_id,
+                maxResults=page_size,
+                pageToken=next_page,
+            )
+            .execute()
+        )
         consume_quota("playlistItems.list")
 
         for item in response.get("items", []):
@@ -155,11 +176,15 @@ def fetch_recent_videos(service, uploads_playlist_id, max_results=10):
     # Step 2: Get full video details in batches of 50
     videos = []
     for i in range(0, len(video_ids), 50):
-        batch = video_ids[i:i + 50]
-        response = service.videos().list(
-            part="snippet,statistics,contentDetails",
-            id=",".join(batch),
-        ).execute()
+        batch = video_ids[i : i + 50]
+        response = (
+            service.videos()
+            .list(
+                part="snippet,statistics,contentDetails",
+                id=",".join(batch),
+            )
+            .execute()
+        )
         consume_quota("videos.list", len(batch))
 
         for v in response.get("items", []):
@@ -167,28 +192,30 @@ def fetch_recent_videos(service, uploads_playlist_id, max_results=10):
             stats = v.get("statistics", {})
             content = v.get("contentDetails", {})
 
-            videos.append({
-                "video_id": v["id"],
-                "title": snippet.get("title"),
-                "published_at": snippet.get("publishedAt"),
-                "description": snippet.get("description", "")[:200],
-                "duration": content.get("duration"),
-                "views": int(stats.get("viewCount", 0)),
-                "likes": int(stats.get("likeCount", 0)),
-                "comments": int(stats.get("commentCount", 0)),
-                "thumbnail": snippet.get("thumbnails", {}).get("high", {}).get("url"),
-            })
+            videos.append(
+                {
+                    "video_id": v["id"],
+                    "title": snippet.get("title"),
+                    "published_at": snippet.get("publishedAt"),
+                    "description": snippet.get("description", "")[:200],
+                    "duration": content.get("duration"),
+                    "views": int(stats.get("viewCount", 0)),
+                    "likes": int(stats.get("likeCount", 0)),
+                    "comments": int(stats.get("commentCount", 0)),
+                    "thumbnail": snippet.get("thumbnails", {}).get("high", {}).get("url"),
+                }
+            )
 
     return videos
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch YouTube channel data")
     parser.add_argument("channel", help="Channel ID, @handle, or URL")
-    parser.add_argument("--videos", type=int, default=10,
-                        help="Number of recent videos to fetch (default: 10)")
-    parser.add_argument("--no-cache", action="store_true",
-                        help="Skip cache and fetch fresh data")
+    parser.add_argument(
+        "--videos", type=int, default=10, help="Number of recent videos to fetch (default: 10)"
+    )
+    parser.add_argument("--no-cache", action="store_true", help="Skip cache and fetch fresh data")
     args = parser.parse_args()
 
     # Check quota before starting
@@ -220,22 +247,18 @@ def main():
     # Resolve channel ID
     channel_id = resolve_channel_id(service, parsed)
     if not channel_id:
-        print(json.dumps({"error": f"Could not resolve channel: {args.channel}"}),
-              file=sys.stderr)
+        print(json.dumps({"error": f"Could not resolve channel: {args.channel}"}), file=sys.stderr)
         sys.exit(1)
 
     # Fetch data
     channel_info = fetch_channel_info(service, channel_id)
     if not channel_info:
-        print(json.dumps({"error": f"Channel not found: {channel_id}"}),
-              file=sys.stderr)
+        print(json.dumps({"error": f"Channel not found: {channel_id}"}), file=sys.stderr)
         sys.exit(1)
 
     videos = []
     if channel_info.get("uploads_playlist"):
-        videos = fetch_recent_videos(
-            service, channel_info["uploads_playlist"], args.videos
-        )
+        videos = fetch_recent_videos(service, channel_info["uploads_playlist"], args.videos)
 
     result = {
         "channel": channel_info,

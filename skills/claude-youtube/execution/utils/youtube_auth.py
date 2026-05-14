@@ -10,18 +10,21 @@ Usage:
     python execution/utils/youtube_auth.py --check oauth
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 TMP_DIR = Path.home() / ".claude" / ".tmp"
 TOKEN_PATH = TMP_DIR / "youtube_oauth_token.json"
 CLIENT_SECRETS_PATH = Path.home() / ".claude" / "youtube_client_secrets.json"
 
 
-def get_api_key():
+def get_api_key() -> str | None:
     """Return YouTube Data API v3 key from environment or config file."""
     key = os.environ.get("YOUTUBE_API_KEY")
     if key:
@@ -30,15 +33,15 @@ def get_api_key():
     config_path = Path.home() / ".claude" / "youtube-credentials.json"
     if config_path.exists():
         with open(config_path) as f:
-            data = json.load(f)
+            data: dict[str, Any] = json.load(f)
             key = data.get("api_key")
-            if key:
+            if isinstance(key, str):
                 return key
 
     return None
 
 
-def get_data_api_service(api_key=None):
+def get_data_api_service(api_key: str | None = None) -> tuple[Any | None, dict[str, Any] | None]:
     """Build and return YouTube Data API v3 service object."""
     try:
         from googleapiclient.discovery import build
@@ -56,7 +59,7 @@ def get_data_api_service(api_key=None):
             "error": "YouTube API key not found",
             "fix": (
                 "Set YOUTUBE_API_KEY environment variable or add to "
-                "~/.claude/youtube-credentials.json as {\"api_key\": \"YOUR_KEY\"}. "
+                '~/.claude/youtube-credentials.json as {"api_key": "YOUR_KEY"}. '
                 "Get a key at https://console.cloud.google.com/apis/credentials"
             ),
         }
@@ -68,7 +71,7 @@ def get_data_api_service(api_key=None):
         return None, {"error": f"Failed to build YouTube service: {e}"}
 
 
-def get_oauth_service(scopes=None):
+def get_oauth_service(scopes: list[str] | None = None) -> tuple[Any | None, dict[str, Any] | None]:
     """Build YouTube Analytics API service with OAuth 2.0."""
     try:
         from google.auth.transport.requests import Request
@@ -92,7 +95,7 @@ def get_oauth_service(scopes=None):
 
     if TOKEN_PATH.exists():
         try:
-            creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), scopes)
+            creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), scopes)  # type: ignore[no-untyped-call]
         except Exception:
             creds = None
 
@@ -116,9 +119,7 @@ def get_oauth_service(scopes=None):
             }
 
         try:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(CLIENT_SECRETS_PATH), scopes
-            )
+            flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRETS_PATH), scopes)
             creds = flow.run_local_server(port=0)
             with open(TOKEN_PATH, "w") as f:
                 f.write(creds.to_json())
@@ -132,32 +133,40 @@ def get_oauth_service(scopes=None):
         return None, {"error": f"Failed to build Analytics service: {e}"}
 
 
-def check_auth(auth_type):
+def check_auth(auth_type: str) -> dict[str, Any]:
     """Check if authentication is configured and return status."""
     if auth_type == "api_key":
         key = get_api_key()
         if key:
             masked = key[:4] + "..." + key[-4:]
             return {"status": "ok", "type": "api_key", "key": masked}
-        return {"status": "missing", "type": "api_key",
-                "fix": "Set YOUTUBE_API_KEY env var or add to ~/.claude/youtube-credentials.json"}
+        return {
+            "status": "missing",
+            "type": "api_key",
+            "fix": "Set YOUTUBE_API_KEY env var or add to ~/.claude/youtube-credentials.json",
+        }
 
     elif auth_type == "oauth":
         if TOKEN_PATH.exists():
             return {"status": "ok", "type": "oauth", "token_path": str(TOKEN_PATH)}
         if CLIENT_SECRETS_PATH.exists():
-            return {"status": "needs_auth", "type": "oauth",
-                    "message": "Client secrets found but no token yet. Run OAuth flow."}
-        return {"status": "missing", "type": "oauth",
-                "fix": f"Download OAuth client secrets to {CLIENT_SECRETS_PATH}"}
+            return {
+                "status": "needs_auth",
+                "type": "oauth",
+                "message": "Client secrets found but no token yet. Run OAuth flow.",
+            }
+        return {
+            "status": "missing",
+            "type": "oauth",
+            "fix": f"Download OAuth client secrets to {CLIENT_SECRETS_PATH}",
+        }
 
     return {"status": "error", "message": f"Unknown auth type: {auth_type}"}
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="YouTube API auth manager")
-    parser.add_argument("--check", choices=["api_key", "oauth"],
-                        help="Check auth status")
+    parser.add_argument("--check", choices=["api_key", "oauth"], help="Check auth status")
     args = parser.parse_args()
 
     if args.check:

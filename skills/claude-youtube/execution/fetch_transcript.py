@@ -16,23 +16,24 @@ Usage:
     python execution/fetch_transcript.py VIDEO_ID --format segments
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from utils.quota_tracker import consume_quota
 
 TMP_DIR = Path.home() / ".claude" / ".tmp"
 
 
-def parse_video_id(raw):
+def parse_video_id(raw: str) -> str:
     """Extract video ID from URL or direct ID input."""
     raw = raw.strip()
 
@@ -52,7 +53,9 @@ def parse_video_id(raw):
     return raw  # Return as-is, let the API validate
 
 
-def fetch_via_ytdlp(video_id, lang="en"):
+def fetch_via_ytdlp(
+    video_id: str, lang: str = "en"
+) -> tuple[list[dict[str, str]] | None, str | None]:
     """Fetch transcript using yt-dlp (fallback method)."""
     ytdlp = shutil.which("yt-dlp")
     if not ytdlp:
@@ -67,16 +70,17 @@ def fetch_via_ytdlp(video_id, lang="en"):
             ytdlp,
             "--skip-download",
             "--write-auto-sub",
-            "--sub-lang", lang,
-            "--sub-format", "vtt",
-            "--output", output_template,
+            "--sub-lang",
+            lang,
+            "--sub-format",
+            "vtt",
+            "--output",
+            output_template,
             url,
         ]
 
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)  # nosec B603
         except subprocess.TimeoutExpired:
             return None, "yt-dlp timed out after 30 seconds"
 
@@ -86,7 +90,7 @@ def fetch_via_ytdlp(video_id, lang="en"):
             # Try SRT format as fallback
             cmd[cmd.index("vtt")] = "srt"
             try:
-                subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                subprocess.run(cmd, capture_output=True, text=True, timeout=30)  # nosec B603
             except subprocess.TimeoutExpired:
                 return None, "yt-dlp timed out"
 
@@ -99,18 +103,22 @@ def fetch_via_ytdlp(video_id, lang="en"):
         return parse_vtt(vtt_files[0].read_text()), None
 
 
-def parse_vtt(content):
+def parse_vtt(content: str) -> list[dict[str, str]]:
     """Parse WebVTT subtitle content into segments."""
-    segments = []
+    segments: list[dict[str, str]] = []
     lines = content.strip().split("\n")
-    current_text = []
-    current_start = None
+    current_text: list[str] = []
+    current_start: str | None = None
 
     for line in lines:
         line = line.strip()
         # Skip header and empty lines
-        if line.startswith("WEBVTT") or line.startswith("Kind:") or \
-           line.startswith("Language:") or not line:
+        if (
+            line.startswith("WEBVTT")
+            or line.startswith("Kind:")
+            or line.startswith("Language:")
+            or not line
+        ):
             if current_text and current_start:
                 text = " ".join(current_text).strip()
                 # Remove VTT tags
@@ -148,7 +156,7 @@ def parse_vtt(content):
             segments.append({"start": current_start, "text": text})
 
     # Deduplicate consecutive identical segments
-    deduped = []
+    deduped: list[dict[str, str]] = []
     for seg in segments:
         if not deduped or deduped[-1]["text"] != seg["text"]:
             deduped.append(seg)
@@ -156,7 +164,7 @@ def parse_vtt(content):
     return deduped
 
 
-def parse_srt(content):
+def parse_srt(content: str) -> list[dict[str, str]]:
     """Parse SRT subtitle content into segments."""
     segments = []
     blocks = re.split(r"\n\n+", content.strip())
@@ -180,17 +188,21 @@ def parse_srt(content):
     return segments
 
 
-def segments_to_text(segments):
+def segments_to_text(segments: list[dict[str, str]]) -> str:
     """Convert segments to plain text."""
     return " ".join(seg["text"] for seg in segments)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch YouTube video transcript")
     parser.add_argument("video", help="Video ID or URL")
     parser.add_argument("--lang", default="en", help="Language code (default: en)")
-    parser.add_argument("--format", choices=["text", "segments", "both"],
-                        default="both", help="Output format (default: both)")
+    parser.add_argument(
+        "--format",
+        choices=["text", "segments", "both"],
+        default="both",
+        help="Output format (default: both)",
+    )
 
     args = parser.parse_args()
 
@@ -232,19 +244,25 @@ def main():
         return
 
     # All methods failed
-    print(json.dumps({
-        "error": "Could not fetch transcript",
-        "video_id": video_id,
-        "attempts": [
-            {"method": "yt-dlp", "error": error or "not attempted"},
-        ],
-        "suggestions": [
-            "Install yt-dlp: pip install yt-dlp",
-            "Check if the video has captions enabled",
-            "Try a different language with --lang",
-            "For private videos, ensure OAuth is configured",
-        ],
-    }, indent=2), file=sys.stderr)
+    print(
+        json.dumps(
+            {
+                "error": "Could not fetch transcript",
+                "video_id": video_id,
+                "attempts": [
+                    {"method": "yt-dlp", "error": error or "not attempted"},
+                ],
+                "suggestions": [
+                    "Install yt-dlp: pip install yt-dlp",
+                    "Check if the video has captions enabled",
+                    "Try a different language with --lang",
+                    "For private videos, ensure OAuth is configured",
+                ],
+            },
+            indent=2,
+        ),
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 

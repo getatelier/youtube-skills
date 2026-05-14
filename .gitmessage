@@ -1,0 +1,9 @@
+# type(scope): subject (max 50 chars)
+#
+# Body: explain what and why (not how). Wrap at 72 chars.
+#
+# Types: feat, fix, docs, refactor, test, chore
+# Scopes: skill, script, seo, audit, references, templates
+#
+# Footer: refs, breaking changes, etc.
+# Breaking change: BREAKING CHANGE: description

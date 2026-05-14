@@ -19,11 +19,14 @@ Usage:
     python execution/utils/quota_tracker.py --reset
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 TMP_DIR = Path.home() / ".claude" / ".tmp"
 DAILY_QUOTA = 10000
@@ -43,42 +46,44 @@ OPERATION_COSTS = {
 PACIFIC_OFFSET = timedelta(hours=-8)  # PST (approximate; doesn't handle DST)
 
 
-def _pacific_date():
+def _pacific_date() -> str:
     """Return current date in Pacific Time."""
     utc_now = datetime.now(timezone.utc)
     pacific_now = utc_now + PACIFIC_OFFSET
     return pacific_now.strftime("%Y-%m-%d")
 
 
-def _quota_file():
+def _quota_file() -> Path:
     """Return path to today's quota file."""
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     return TMP_DIR / f"youtube_quota_{_pacific_date()}.json"
 
 
-def _load_quota():
+def _load_quota() -> dict[str, Any]:
     """Load today's quota state."""
     path = _quota_file()
     if path.exists():
         with open(path) as f:
-            return json.load(f)
+            data: dict[str, Any] = json.load(f)
+            return data
     return {"date": _pacific_date(), "consumed": 0, "operations": {}}
 
 
-def _save_quota(data):
+def _save_quota(data: dict[str, Any]) -> None:
     """Save quota state."""
     path = _quota_file()
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
 
-def get_remaining():
+def get_remaining() -> int:
     """Return remaining quota units for today."""
     data = _load_quota()
-    return DAILY_QUOTA - data["consumed"]
+    consumed: int = data.get("consumed", 0)
+    return DAILY_QUOTA - consumed
 
 
-def check_quota(operation=None, count=1):
+def check_quota(operation: str | None = None, count: int = 1) -> dict[str, Any]:
     """Check if an operation can be performed within quota.
 
     Returns dict with status, remaining units, and warning if applicable.
@@ -117,7 +122,7 @@ def check_quota(operation=None, count=1):
     return result
 
 
-def consume_quota(operation, count=1):
+def consume_quota(operation: str, count: int = 1) -> dict[str, Any]:
     """Record quota consumption for an operation.
 
     Returns dict with updated quota state.
@@ -152,32 +157,26 @@ def consume_quota(operation, count=1):
 
     if data["consumed"] / DAILY_QUOTA >= WARN_THRESHOLD:
         result["warning"] = (
-            f"Quota {result['used_percent']}% consumed. "
-            f"Only {new_remaining} units remaining."
+            f"Quota {result['used_percent']}% consumed. " f"Only {new_remaining} units remaining."
         )
 
     return result
 
 
-def reset_quota():
+def reset_quota() -> dict[str, Any]:
     """Force reset today's quota (for testing only)."""
     data = {"date": _pacific_date(), "consumed": 0, "operations": {}}
     _save_quota(data)
     return {"status": "reset", "date": data["date"], "remaining": DAILY_QUOTA}
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="YouTube API quota tracker")
-    parser.add_argument("--check", action="store_true",
-                        help="Check current quota status")
-    parser.add_argument("--consume", type=str,
-                        help="Record quota consumption for an operation")
-    parser.add_argument("--count", type=int, default=1,
-                        help="Number of operations (default: 1)")
-    parser.add_argument("--reset", action="store_true",
-                        help="Reset quota counter (testing only)")
-    parser.add_argument("--can-afford", type=str,
-                        help="Check if operation is affordable")
+    parser.add_argument("--check", action="store_true", help="Check current quota status")
+    parser.add_argument("--consume", type=str, help="Record quota consumption for an operation")
+    parser.add_argument("--count", type=int, default=1, help="Number of operations (default: 1)")
+    parser.add_argument("--reset", action="store_true", help="Reset quota counter (testing only)")
+    parser.add_argument("--can-afford", type=str, help="Check if operation is affordable")
     args = parser.parse_args()
 
     if args.reset:
